@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { PlayerStats, Module } from '../types';
-import { Shield, Zap, Heart, Layers, CircleDollarSign, AlertTriangle, Cpu, Droplet, Activity, Database, Box } from 'lucide-react';
+import { Shield, Zap, Heart, Layers, CircleDollarSign, AlertTriangle, Cpu, Droplet, Activity, Database, Box, Cross, Eye } from 'lucide-react';
 
 interface StatsHeaderProps {
   floor: number;
@@ -11,12 +12,35 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
   // Calculate HP percentage for bar
   const hpPercent = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   
-  // Alert Color Logic
-  const getAlertColor = (level: number) => {
-      if (level < 30) return 'text-cyber-green';
-      if (level < 70) return 'text-cyber-yellow';
-      return 'text-cyber-red animate-pulse';
+  // Alert System Logic (DEFCON Phases) - NEW THRESHOLDS
+  const getAlertState = (level: number) => {
+      if (level < 30) return { 
+          phase: 'STEALTH MODE', 
+          color: 'text-cyber-green', 
+          barColor: 'bg-cyber-green',
+          effect: 'Surprise Attack (x1.7 DMG)' 
+      };
+      if (level < 60) return { 
+          phase: 'ACTIVE SWEEP', 
+          color: 'text-cyber-yellow', 
+          barColor: 'bg-cyber-yellow',
+          effect: 'Standard Protocols' 
+      };
+      if (level < 90) return { 
+          phase: 'LOCKDOWN', 
+          color: 'text-orange-500', 
+          barColor: 'bg-orange-500',
+          effect: 'Prices +50% | Heal -25%' 
+      };
+      return { 
+          phase: 'KILL SWITCH', 
+          color: 'text-cyber-red animate-pulse glitch-text', 
+          barColor: 'bg-cyber-red animate-pulse',
+          effect: 'HUNTER ACTIVE (25% Spawn)' 
+      };
   };
+
+  const alertState = getAlertState(player.securityAlert);
 
   const getModuleIcon = (effectId: string) => {
     switch(effectId) {
@@ -25,6 +49,8 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
         case 'miner': return <Database className="w-4 h-4 text-emerald-400" />;
         case 'nano_armor': return <Box className="w-4 h-4 text-cyan-400" />;
         case 'overclock': return <Zap className="w-4 h-4 text-yellow-400" />;
+        case 'guardian': return <Cross className="w-4 h-4 text-white" />;
+        case 'logic_bomb': return <Eye className="w-4 h-4 text-purple-400" />;
         default: return <Cpu className="w-4 h-4 text-purple-400" />;
     }
   };
@@ -48,6 +74,8 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
           case 'miner': return `+${Math.round(0.2 * c * 100)}% Crypto gain.`;
           case 'nano_armor': return `${10 * c}% chance to negate DMG.`;
           case 'overclock': return `Overclocked: Power +${3 * c}, MaxHP -${10 * c}.`;
+          case 'logic_bomb': return `${15 * c}% chance to reflect 50% DMG.`;
+          case 'guardian': return `Reduces DMG by ${5 * c} flat amount.`;
           default: return m.description;
       }
   };
@@ -67,19 +95,23 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
         {/* Stats Grid */}
         <div className="flex-1 flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
             
-            {/* Security Alert Level */}
-            <div className="flex items-center space-x-2" title="Network Security Alert: Increases Enemy Damage">
-                <AlertTriangle className={`w-5 h-5 ${getAlertColor(player.securityAlert)}`} />
-                <div className="flex flex-col w-24">
-                    <span className={`text-[10px] uppercase tracking-wider ${getAlertColor(player.securityAlert)}`}>
-                        Alert: {player.securityAlert}%
-                    </span>
+            {/* Security Alert Level - NEW DESIGN */}
+            <div className="flex items-center space-x-3 bg-black/40 px-3 py-1 rounded border border-gray-800 hover:border-gray-600 transition-colors" title={`Phase: ${alertState.phase} - ${alertState.effect}`}>
+                <AlertTriangle className={`w-5 h-5 ${alertState.color}`} />
+                <div className="flex flex-col w-32">
+                    <div className="flex justify-between items-baseline">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${alertState.color}`}>
+                            {alertState.phase}
+                        </span>
+                        <span className={`text-[10px] ${alertState.color}`}>{player.securityAlert}%</span>
+                    </div>
                     <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden mt-0.5">
                         <div 
-                            className={`h-full transition-all duration-500 ${player.securityAlert > 70 ? 'bg-cyber-red' : 'bg-cyber-yellow'}`}
+                            className={`h-full transition-all duration-500 ${alertState.barColor}`}
                             style={{ width: `${player.securityAlert}%` }}
                         />
                     </div>
+                    <span className="text-[8px] text-gray-500 font-mono mt-0.5 uppercase">{alertState.effect}</span>
                 </div>
             </div>
 
@@ -127,6 +159,7 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
 
             {/* RAM / Power */}
             <div className="flex items-center space-x-2 text-cyber-pink">
+                <Shield className="w-5 h-5 hidden" /> 
                 <Zap className="w-5 h-5" />
                 <div className="flex flex-col">
                     <span className="text-[10px] uppercase tracking-wider text-cyber-pink/70">Power</span>

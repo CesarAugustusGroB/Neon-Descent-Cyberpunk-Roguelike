@@ -1,6 +1,7 @@
+
 import React from 'react';
-import { RoomCardData, RoomType } from '../types';
-import { Skull, Swords, Gem, HelpCircle, Coffee, Ghost, ArrowUpCircle, ShoppingBag } from 'lucide-react';
+import { RoomCardData, RoomType, ShopType } from '../types';
+import { Skull, Swords, Gem, HelpCircle, Coffee, Ghost, ArrowUpCircle, ShoppingBag, AlertTriangle, Cpu, Disc, Briefcase } from 'lucide-react';
 
 interface RoomCardProps {
   card: RoomCardData;
@@ -22,7 +23,7 @@ const getTypeColor = (type: RoomType) => {
   }
 };
 
-const getTypeIcon = (type: RoomType, size = "w-8 h-8") => {
+const getTypeIcon = (type: RoomType, size = "w-8 h-8", shopType?: ShopType) => {
   switch (type) {
     case RoomType.ENEMY: return <Skull className={size} />;
     case RoomType.BOSS: return <Ghost className={size} />;
@@ -30,7 +31,10 @@ const getTypeIcon = (type: RoomType, size = "w-8 h-8") => {
     case RoomType.TREASURE: return <Gem className={size} />;
     case RoomType.REST: return <Coffee className={size} />;
     case RoomType.EVENT: return <HelpCircle className={size} />;
-    case RoomType.MERCHANT: return <ShoppingBag className={size} />;
+    case RoomType.MERCHANT: 
+        if (shopType === 'HARDWARE') return <Cpu className={size} />;
+        if (shopType === 'SOFTWARE') return <Disc className={size} />;
+        return <ShoppingBag className={size} />;
     default: return <HelpCircle className={size} />;
   }
 };
@@ -42,6 +46,12 @@ const getMiniIcon = (type: RoomType) => {
 
 export const RoomCard: React.FC<RoomCardProps> = ({ card, onClick, disabled, shortcutKey }) => {
   const colorClass = getTypeColor(card.type);
+
+  // Alert Indicator Logic
+  // Enemies/Elites/Boss reduce alert (negative penalty displayed as positive reduction or handled by icon)
+  // Others increase it.
+  const isCombat = [RoomType.ENEMY, RoomType.ELITE, RoomType.BOSS].includes(card.type);
+  const alertChange = card.alertPenalty !== undefined ? card.alertPenalty : (isCombat ? -15 : 5);
 
   return (
     <button
@@ -71,15 +81,26 @@ export const RoomCard: React.FC<RoomCardProps> = ({ card, onClick, disabled, sho
           {shortcutKey}
         </div>
       )}
+      
+      {/* Alert Indicator */}
+      <div className={`absolute top-3 right-3 z-20 flex items-center gap-1 px-2 py-1 rounded border bg-black/80 backdrop-blur-md text-xs font-mono font-bold ${alertChange > 0 ? 'border-red-500 text-red-500' : 'border-green-500 text-green-500'}`}>
+          <AlertTriangle className="w-3 h-3" />
+          {alertChange > 0 ? `+${alertChange}%` : `${alertChange}%`}
+      </div>
 
       {/* Main Icon */}
       <div className="mt-8 mb-4 p-4 rounded-full bg-black/40 border border-current shadow-lg group-hover:shadow-[0_0_15px_currentColor] transition-all duration-300">
-        {getTypeIcon(card.type, "w-16 h-16")}
+        {getTypeIcon(card.type, "w-16 h-16", card.shopType)}
       </div>
 
       {/* Text Content */}
       <div className="flex flex-col items-center text-center space-y-2">
         <h3 className="text-xl font-mono font-bold tracking-wider uppercase">{card.name}</h3>
+        {card.shopType && (
+            <span className="text-[10px] font-mono border border-current px-1 rounded opacity-70">
+                {card.shopType} NODE
+            </span>
+        )}
         <p className="text-xs font-mono opacity-70 leading-relaxed px-2">
             {card.description}
         </p>

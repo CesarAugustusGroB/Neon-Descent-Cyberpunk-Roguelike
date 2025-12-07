@@ -1,3 +1,4 @@
+
 export enum RoomType {
   ENEMY = 'ENEMY',
   ELITE = 'ELITE',
@@ -8,11 +9,13 @@ export enum RoomType {
   MERCHANT = 'MERCHANT'
 }
 
+export type ShopType = 'HARDWARE' | 'SOFTWARE' | 'GENERAL';
+
 export interface Module {
   id: string;
   name: string;
   description: string;
-  effectId: 'vampire' | 'thorns' | 'miner' | 'nano_armor' | 'overclock';
+  effectId: 'vampire' | 'thorns' | 'miner' | 'nano_armor' | 'overclock' | 'logic_bomb' | 'guardian';
   cost: number;
   icon?: string; 
 }
@@ -34,7 +37,9 @@ export interface RoomCardData {
   name: string;
   description: string;
   // The types of the 3 cards that will appear NEXT if this card is chosen
-  nextScoutInfo: RoomType[]; 
+  nextScoutInfo: RoomType[];
+  alertPenalty?: number; // Visual indicator of potential alert increase (or decrease if negative)
+  shopType?: ShopType; // Specific type for Merchant cards
 }
 
 export interface LogEntry {
@@ -44,14 +49,29 @@ export interface LogEntry {
   type: 'info' | 'combat' | 'gain' | 'danger' | 'alert';
 }
 
+export interface EventChoice {
+    id: string;
+    text: string;
+    description: string;
+    riskText: string;
+    style: string;
+}
+
 export interface GameState {
   floor: number;
   player: PlayerStats;
   currentCards: RoomCardData[];
   history: LogEntry[];
-  status: 'PLAYING' | 'RESOLVING' | 'GAME_OVER' | 'VICTORY' | 'SHOPPING';
+  status: 'PLAYING' | 'RESOLVING' | 'GAME_OVER' | 'VICTORY' | 'SHOPPING' | 'EVENT_INTERACTION';
   lastResolutionText?: string;
   analyzing?: boolean;
   analysisResult?: string;
   lastBossFloor: number;
+  currentEvent?: {
+      title: string;
+      description: string;
+      choices: EventChoice[];
+  };
+  pendingNextRoomTypes?: RoomType[]; // Stores the scouted path while in a sub-screen (Shop/Event)
+  activeShopType?: ShopType;
 }
