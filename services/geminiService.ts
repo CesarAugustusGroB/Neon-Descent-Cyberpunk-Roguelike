@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { PlayerStats, RoomCardData, RoomType } from "../types";
 
@@ -19,12 +20,12 @@ export const getTacticalAnalysis = async (
 
     const prompt = `
 You are a high-level tactical AI assistant for a cyberpunk roguelike game called "Neon Descent".
-Your goal is to ensure the user's survival (Integrity/HP) and maximize their growth (Power/RAM).
+Your goal is to ensure the user's survival (Integrity/HP) and maximize their growth (RAM).
 
 CURRENT STATE:
 Floor Depth: ${floor} (Difficulty scales exponentially)
 Player Integrity (HP): ${player.hp} / ${player.maxHp}
-Player RAM (Power): ${player.power}
+Player RAM: ${player.power}
 Player Firewall (Shield): ${player.shield}
 Network Security Alert Level: ${player.securityAlert}% (High alert = Enemies deal significantly more damage!)
 Credits (Crypto): ${player.credits}

@@ -20,13 +20,13 @@ const INITIAL_STATS: PlayerStats = {
 
 // Available Modules (Prices increased by 1.5x)
 const AVAILABLE_MODULES: Module[] = [
-    { id: 'm1', name: 'Vampire Kernel', description: 'Recover 3 HP when destroying enemies.', effectId: 'vampire', cost: 75 },
-    { id: 'm2', name: 'Thorns Protocol', description: 'Deals 5 DMG to attacker per cycle.', effectId: 'thorns', cost: 101 },
+    { id: 'm1', name: 'Vampire Kernel', description: 'Recover 2 HP when destroying enemies.', effectId: 'vampire', cost: 75 },
+    { id: 'm2', name: 'Thorns Protocol', description: 'Deals 3 DMG to attacker per cycle.', effectId: 'thorns', cost: 101 },
     { id: 'm3', name: 'Crypto Miner', description: '+20% Crypto gain from all sources.', effectId: 'miner', cost: 60 },
-    { id: 'm4', name: 'Nano-Armor', description: '+10% chance to Negate all damage.', effectId: 'nano_armor', cost: 126 },
-    { id: 'm5', name: 'Overclock', description: '+3 Power, but -10 Max Integrity.', effectId: 'overclock', cost: 90 },
-    { id: 'm6', name: 'Logic Bomb', description: '15% chance to reflect 50% damage taken.', effectId: 'logic_bomb', cost: 113 },
-    { id: 'm7', name: 'Guardian Angel', description: 'Flat -5 Damage reduction.', effectId: 'guardian', cost: 143 },
+    { id: 'm4', name: 'Nano-Armor', description: '+8% chance to Negate all damage.', effectId: 'nano_armor', cost: 126 },
+    { id: 'm5', name: 'Overclock', description: '+3 RAM, but -10 Max Integrity.', effectId: 'overclock', cost: 90 },
+    { id: 'm6', name: 'Logic Bomb', description: '12% chance to reflect 50% damage taken.', effectId: 'logic_bomb', cost: 113 },
+    { id: 'm7', name: 'Guardian Angel', description: 'Flat -2 Damage reduction.', effectId: 'guardian', cost: 143 },
 ];
 
 const NAMES = {
@@ -229,7 +229,7 @@ export default function App() {
               title: "Rogue AI Signal",
               description: "You intercept a fragmented signal from a rogue AI. It offers power in exchange for exposing your location.",
               choices: [
-                  { id: 'accept_power', text: 'Merge Protocols', description: '+2 Power, +15 Alert', riskText: 'High Alert', style: 'text-cyber-pink border-cyber-pink' },
+                  { id: 'accept_power', text: 'Merge Protocols', description: '+2 RAM, +15 Alert', riskText: 'High Alert', style: 'text-cyber-pink border-cyber-pink' },
                   { id: 'mask_signal', text: 'Mask Signal', description: '-15 Alert, -75 Crypto', riskText: 'Cost: Crypto', style: 'text-cyber-green border-cyber-green' },
                   { id: 'ignore', text: 'Sever Connection', description: 'No Effect', riskText: 'Safe', style: 'text-gray-400 border-gray-400' }
               ]
@@ -239,7 +239,7 @@ export default function App() {
               description: "A massive, unguarded server. It's glitching heavily. You could try to siphon funds or purge the corruption to lower your signature.",
               choices: [
                   { id: 'siphon', text: 'Siphon Funds', description: 'Gain High Crypto, +15 Alert', riskText: 'Greedy', style: 'text-cyber-yellow border-cyber-yellow' },
-                  { id: 'purge', text: 'Purge Corruption', description: '-20 Alert, -3 Power (Burnout)', riskText: 'Tactical', style: 'text-cyber-neon border-cyber-neon' },
+                  { id: 'purge', text: 'Purge Corruption', description: '-20 Alert, -3 RAM (Burnout)', riskText: 'Tactical', style: 'text-cyber-neon border-cyber-neon' },
                   { id: 'leave', text: 'Leave', description: 'No Effect', riskText: 'Safe', style: 'text-gray-400 border-gray-400' }
               ]
           },
@@ -267,7 +267,7 @@ export default function App() {
           case 'accept_power':
               player.power += 2;
               alertChange = 15;
-              logMsg = "Merged with Rogue AI: +2 Power, +15 Alert";
+              logMsg = "Merged with Rogue AI: +2 RAM, +15 Alert";
               resolutionText = "You accepted the raw data stream. Your processing power surged, but the massive signal spike alerted every subsystem in the sector.";
               break;
           case 'mask_signal':
@@ -286,7 +286,7 @@ export default function App() {
           case 'purge':
               player.power = Math.max(1, player.power - 3);
               alertChange = -20;
-              logMsg = "System Purge: -20 Alert, -3 Power";
+              logMsg = "System Purge: -20 Alert, -3 RAM";
               resolutionText = "You actively hunted down and deleted your own logs from the corrupted server, frying some of your circuits in the process.";
               break;
           case 'smash':
@@ -409,7 +409,8 @@ export default function App() {
       const enemyPower = Math.floor(baseEnemyPower * 1.2 * multiplier * alertMultiplier);
       const enemyHp = Math.floor(baseEnemyHp * 1.2 * multiplier);
 
-      let effectivePlayerPower = player.power + (5 * thornsCount);
+      // NERF: Thorns now gives +3 instead of +5
+      let effectivePlayerPower = player.power + (3 * thornsCount);
       
       // --- ALERT PHASE: STEALTH (0-29%) ---
       // Benefit: First Attack x1.7 Damage
@@ -425,18 +426,18 @@ export default function App() {
           roundsToKill += Math.ceil(remainingEnemyHp / effectivePlayerPower);
       }
 
-      // Guardian Angel Flat Reduction
-      const flatReduction = 5 * guardianCount;
+      // Guardian Angel Flat Reduction (NERF: -2 instead of -5)
+      const flatReduction = 2 * guardianCount;
       let incomingDmgPerRound = Math.max(0, enemyPower - player.shield - flatReduction);
       
       let totalDamageTaken = 0;
       
       // Player hits first, so roundsToKill - 1 hits taken
       for(let i=0; i< roundsToKill -1; i++) {
-          // Nano Armor check
-          if (!(nanoCount > 0 && Math.random() < (0.10 * nanoCount))) {
-              // Logic Bomb Check (Reflect Damage)
-              if (logicBombCount > 0 && Math.random() < (0.15 * logicBombCount)) {
+          // Nano Armor check (NERF: 8% instead of 10%)
+          if (!(nanoCount > 0 && Math.random() < (0.08 * nanoCount))) {
+              // Logic Bomb Check (Reflect Damage) (NERF: 12% instead of 15%)
+              if (logicBombCount > 0 && Math.random() < (0.12 * logicBombCount)) {
                   // Logic Bomb mitigation for simulation
               } else {
                   totalDamageTaken += incomingDmgPerRound;
@@ -448,7 +449,8 @@ export default function App() {
       
       const powerGain = card.type === RoomType.BOSS ? 5 : 1;
       player.power += powerGain;
-      if (vampireCount > 0) player.hp = Math.min(player.maxHp, player.hp + (3 * vampireCount));
+      // NERF: Vampire now heals 2 instead of 3
+      if (vampireCount > 0) player.hp = Math.min(player.maxHp, player.hp + (2 * vampireCount));
       if (card.type === RoomType.BOSS) bossDefeated = true;
 
       // Crypto
@@ -503,11 +505,11 @@ export default function App() {
              const roll = Math.random();
              if (roll < 0.35) {
                  player.power += 3;
-                 logMsg = "Acquired Optimization Patch: +3 Power";
+                 logMsg = "Acquired Optimization Patch: +3 RAM";
                  resolutionText = "You decrypted the secured cache. Inside was a kernel optimization patch.";
              } else if (roll < 0.70) {
                  player.shield += 2;
-                 logMsg = "Acquired Security Protocol: +2 Shield";
+                 logMsg = "Acquired Security Protocol: +2 Firewall";
                  resolutionText = "You found an abandoned security suite. Installing it reinforced your firewall.";
              } else {
                  const baseGain = 75 * scalingFactor;
@@ -561,12 +563,18 @@ export default function App() {
      advanceFloor(player, "You jack out of the black market node. The transaction signals have slightly increased the local security alert.", false, gameState.pendingNextRoomTypes);
   }, [gameState.player, gameState.pendingNextRoomTypes, advanceFloor]);
 
-  const buyModule = (module: Module) => {
+  const calculateModuleCost = (module: Module, currentCount: number) => {
       const isLockdown = gameState.player.securityAlert >= 60 && gameState.player.securityAlert < 90;
-      const costMultiplier = isLockdown ? 1.25 : 1; 
-      const finalCost = Math.ceil(module.cost * costMultiplier);
+      const lockdownMultiplier = isLockdown ? 1.25 : 1;
+      // Price increases by 12% per stack (compounding)
+      const stackMultiplier = Math.pow(1.12, currentCount);
+      return Math.ceil(module.cost * stackMultiplier * lockdownMultiplier);
+  };
 
+  const buyModule = (module: Module) => {
       const currentCount = gameState.player.modules.filter(m => m.id === module.id).length;
+      const finalCost = calculateModuleCost(module, currentCount);
+
       if (gameState.player.credits >= finalCost && currentCount < 5) {
           setGameState(prev => {
               const newModules = [...prev.player.modules, module];
@@ -826,7 +834,7 @@ export default function App() {
                       {shopModules.map(mod => {
                           const ownedCount = gameState.player.modules.filter(m => m.id === mod.id).length;
                           const isMaxed = ownedCount >= 5;
-                          const finalCost = Math.ceil(mod.cost * priceMultiplier);
+                          const finalCost = calculateModuleCost(mod, ownedCount);
 
                           return (
                               <div key={mod.id} className={`border border-gray-700 bg-black/40 p-4 rounded transition-colors group ${isMaxed ? 'opacity-50' : 'hover:border-purple-500'}`}>
@@ -887,8 +895,8 @@ export default function App() {
                                   <ul className="list-disc pl-4 space-y-2">
                                       <li><strong className="text-white">Goal:</strong> Descend as deep as possible.</li>
                                       <li><strong className="text-white">Scouting:</strong> Icons above cards show future room types.</li>
-                                      <li><strong className="text-white">Power (RAM):</strong> Determines kill speed.</li>
-                                      <li><strong className="text-white">Shield (Firewall):</strong> Reduces damage taken.</li>
+                                      <li><strong className="text-white">RAM (Power):</strong> Determines kill speed.</li>
+                                      <li><strong className="text-white">Firewall:</strong> Reduces damage taken.</li>
                                   </ul>
                               </div>
                               <div className="space-y-4">
@@ -905,8 +913,8 @@ export default function App() {
                                   <h3 className="text-cyber-red font-bold text-lg flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> COMBAT LOGIC</h3>
                                   <div className="bg-black/50 p-3 rounded border border-gray-800">
                                       <p className="mb-2">Combat is instant but calculated:</p>
-                                      <p className="text-xs text-gray-500 mb-1">1. Rounds Needed = Enemy HP / Player Power</p>
-                                      <p className="text-xs text-gray-500 mb-1">2. Damage Taken = (Rounds - 1) * (Enemy Atk - Shield)</p>
+                                      <p className="text-xs text-gray-500 mb-1">1. Rounds Needed = Enemy HP / Player RAM</p>
+                                      <p className="text-xs text-gray-500 mb-1">2. Damage Taken = (Rounds - 1) * (Enemy Atk - Firewall)</p>
                                       <p className="text-xs text-gray-500 mb-1 mt-2 text-orange-400">At 100% Alert, enemies deal ~1.6x damage.</p>
                                   </div>
                               </div>
@@ -929,7 +937,7 @@ export default function App() {
                                             <span className="text-cyber-red">24 * Scale</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span>Base Power</span>
+                                            <span>Base RAM</span>
                                             <span className="text-cyber-pink">12 * Scale</span>
                                         </div>
                                     </div>
@@ -937,8 +945,8 @@ export default function App() {
                                     
                                     <h4 className="text-white font-bold mt-4">Class Multipliers</h4>
                                     <ul className="list-disc pl-4 space-y-1 text-xs">
-                                        <li><span className="text-purple-400">ELITE:</span> 1.5x HP & Power (-13% Alert)</li>
-                                        <li><span className="text-red-500">BOSS:</span> 2.5x HP & Power (-30% Alert)</li>
+                                        <li><span className="text-purple-400">ELITE:</span> 1.5x HP & RAM (-13% Alert)</li>
+                                        <li><span className="text-red-500">BOSS:</span> 2.5x HP & RAM (-30% Alert)</li>
                                         <li><span className="text-gray-400">STANDARD:</span> 1.0x Stats (-7% Alert)</li>
                                     </ul>
                                 </div>
@@ -968,11 +976,11 @@ export default function App() {
                                     <h3 className="text-cyber-green font-bold text-lg flex items-center gap-2 mt-6">TREASURE PROTOCOLS</h3>
                                     <div className="bg-black/50 p-4 rounded border border-gray-800 space-y-2">
                                         <div className="flex justify-between border-b border-gray-700 pb-1">
-                                            <span>Power Patch (+3)</span>
+                                            <span>RAM Patch (+3)</span>
                                             <span className="text-cyber-pink">35%</span>
                                         </div>
                                         <div className="flex justify-between border-b border-gray-700 pb-1">
-                                            <span>Shield Suite (+2)</span>
+                                            <span>Firewall Suite (+2)</span>
                                             <span className="text-cyber-yellow">35%</span>
                                         </div>
                                         <div className="flex justify-between">

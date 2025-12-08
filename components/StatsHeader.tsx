@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { PlayerStats, Module } from '../types';
-import { Shield, Zap, Heart, Layers, CircleDollarSign, AlertTriangle, Cpu, Droplet, Activity, Database, Box, Cross, Eye } from 'lucide-react';
+import { Shield, Zap, Heart, Layers, Bitcoin, AlertTriangle, Cpu, Droplet, Activity, Database, Box, Cross, Eye, MemoryStick } from 'lucide-react';
 
 interface StatsHeaderProps {
   floor: number;
@@ -24,13 +24,13 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
           phase: 'ACTIVE SWEEP', 
           color: 'text-cyber-yellow', 
           barColor: 'bg-cyber-yellow',
-          effect: 'Standard Protocols' 
+          effect: 'Standard Protocols | 1.3x Crypto' 
       };
       if (level < 90) return { 
           phase: 'LOCKDOWN', 
           color: 'text-orange-500', 
           barColor: 'bg-orange-500',
-          effect: 'Prices +50% | Heal -25%' 
+          effect: 'Prices +25% | Heal -20%' 
       };
       return { 
           phase: 'KILL SWITCH', 
@@ -64,18 +64,18 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
       return acc;
   }, {} as Record<string, Module & { count: number }>);
 
-  const uniqueModules = Object.values(moduleGroups);
+  const uniqueModules: (Module & { count: number })[] = Object.values(moduleGroups);
 
   const getDynamicDescription = (m: Module & { count: number }) => {
       const c = m.count;
       switch(m.effectId) {
-          case 'vampire': return `Recover ${3 * c} HP on kill.`;
-          case 'thorns': return `Deal ${5 * c} DMG to attackers.`;
+          case 'vampire': return `Recover ${2 * c} HP on kill.`;
+          case 'thorns': return `Deal ${3 * c} DMG to attackers.`;
           case 'miner': return `+${Math.round(0.2 * c * 100)}% Crypto gain.`;
-          case 'nano_armor': return `${10 * c}% chance to negate DMG.`;
-          case 'overclock': return `Overclocked: Power +${3 * c}, MaxHP -${10 * c}.`;
-          case 'logic_bomb': return `${15 * c}% chance to reflect 50% DMG.`;
-          case 'guardian': return `Reduces DMG by ${5 * c} flat amount.`;
+          case 'nano_armor': return `${8 * c}% chance to negate DMG.`;
+          case 'overclock': return `Overclocked: RAM +${3 * c}, MaxHP -${10 * c}.`;
+          case 'logic_bomb': return `${12 * c}% chance to reflect 50% DMG.`;
+          case 'guardian': return `Reduces DMG by ${2 * c} flat amount.`;
           default: return m.description;
       }
   };
@@ -159,10 +159,9 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
 
             {/* RAM / Power */}
             <div className="flex items-center space-x-2 text-cyber-pink">
-                <Shield className="w-5 h-5 hidden" /> 
-                <Zap className="w-5 h-5" />
+                <MemoryStick className="w-5 h-5" />
                 <div className="flex flex-col">
-                    <span className="text-[10px] uppercase tracking-wider text-cyber-pink/70">Power</span>
+                    <span className="text-[10px] uppercase tracking-wider text-cyber-pink/70">RAM</span>
                     <span className="font-mono font-bold leading-none">{player.power}</span>
                 </div>
             </div>
@@ -171,14 +170,14 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
             <div className="flex items-center space-x-2 text-cyber-yellow">
                 <Shield className="w-5 h-5" />
                 <div className="flex flex-col">
-                    <span className="text-[10px] uppercase tracking-wider text-cyber-yellow/70">Shield</span>
+                    <span className="text-[10px] uppercase tracking-wider text-cyber-yellow/70">FIREWALL</span>
                     <span className="font-mono font-bold leading-none">{player.shield}</span>
                 </div>
             </div>
 
             {/* Credits / Crypto */}
             <div className="flex items-center space-x-2 text-cyber-green">
-                <CircleDollarSign className="w-5 h-5" />
+                <Bitcoin className="w-5 h-5" />
                 <div className="flex flex-col">
                     <span className="text-[10px] uppercase tracking-wider text-cyber-green/70">Crypto</span>
                     <span className="font-mono font-bold leading-none">{player.credits}</span>
