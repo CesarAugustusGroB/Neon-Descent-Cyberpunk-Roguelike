@@ -11,6 +11,34 @@ export enum RoomType {
 
 export type ShopType = 'HARDWARE' | 'SOFTWARE' | 'GENERAL';
 
+export enum TreasureType {
+  DATA_CACHE = 'DATA_CACHE',
+  CRYPTO_MINER = 'CRYPTO_MINER',
+  DARK_CONTRACT = 'DARK_CONTRACT'
+}
+
+export enum ContractType {
+  GHOST_RUN = 'GHOST_RUN', // No combat
+  WETWORK = 'WETWORK', // Kill Elite
+  CHAOS_BET = 'CHAOS_BET', // Reach High Alert
+  SPEEDRUN = 'SPEEDRUN', // Clear floors (survive X rooms)
+  UNTOUCHABLE = 'UNTOUCHABLE' // Low damage
+}
+
+export interface Contract {
+  id: string;
+  name: string;
+  description: string;
+  type: ContractType;
+  cost: number; // Upfront cost
+  payoutAmount: number; // Crypto amount or 0 if module
+  payoutReward?: string; // Description of reward if not crypto
+  targetValue: number; // e.g., 4 rooms, 1 kill
+  currentValue: number;
+  durationFloors: number; // How many floors/rooms until it expires
+  startFloor: number;
+}
+
 export interface Module {
   id: string;
   name: string;
@@ -28,6 +56,8 @@ export interface PlayerStats {
   credits: number;
   securityAlert: number; // 0-100%
   modules: Module[];
+  activeContracts: Contract[];
+  hasCryptoMiner: boolean;
 }
 
 export interface RoomCardData {
@@ -62,7 +92,7 @@ export interface GameState {
   player: PlayerStats;
   currentCards: RoomCardData[];
   history: LogEntry[];
-  status: 'PLAYING' | 'RESOLVING' | 'GAME_OVER' | 'VICTORY' | 'SHOPPING' | 'EVENT_INTERACTION';
+  status: 'PLAYING' | 'RESOLVING' | 'GAME_OVER' | 'VICTORY' | 'SHOPPING' | 'EVENT_INTERACTION' | 'TREASURE_INTERACTION';
   lastResolutionText?: string;
   analyzing?: boolean;
   analysisResult?: string;
@@ -74,4 +104,12 @@ export interface GameState {
   };
   pendingNextRoomTypes?: RoomType[]; // Stores the scouted path while in a sub-screen (Shop/Event)
   activeShopType?: ShopType;
+  currentTreasure?: {
+      type: TreasureType;
+      dataCache?: {
+          layer: number; // 1, 2, 3
+          rewardsCollected: string[];
+      };
+      contracts?: Contract[]; // Available contracts to sign
+  };
 }

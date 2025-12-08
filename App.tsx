@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { PlayerStats, RoomCardData, RoomType, GameState, LogEntry, Module, EventChoice, ShopType } from './types';
+import { PlayerStats, RoomCardData, RoomType, GameState, LogEntry, Module, EventChoice, ShopType, TreasureType, Contract, ContractType } from './types';
 import { StatsHeader } from './components/StatsHeader';
 import { RoomCard } from './components/RoomCard';
 import { GameLog } from './components/GameLog';
 import { getTacticalAnalysis } from './services/geminiService';
-import { Brain, RefreshCw, AlertTriangle, Terminal, ShoppingBag, X, HelpCircle, Keyboard, Info, Flame, MousePointerClick, Cpu, Disc, Database as DatabaseIcon, Shield, Zap } from 'lucide-react';
+import { Brain, RefreshCw, AlertTriangle, Terminal, ShoppingBag, X, HelpCircle, Keyboard, Info, Flame, MousePointerClick, Cpu, Disc, Database as DatabaseIcon, Shield, Zap, Lock, Unlock, Pickaxe, ClipboardList, CheckCircle } from 'lucide-react';
 
 // --- Constants & Config ---
 const INITIAL_STATS: PlayerStats = {
@@ -15,7 +15,9 @@ const INITIAL_STATS: PlayerStats = {
   shield: 0,
   credits: 0,
   securityAlert: 0, // Starts at 0%
-  modules: []
+  modules: [],
+  activeContracts: [],
+  hasCryptoMiner: false
 };
 
 // Available Modules (Prices increased by 1.5x)
@@ -33,7 +35,7 @@ const NAMES = {
     [RoomType.ENEMY]: ["Security Drone", "Script Kiddie", "Data Leech", "Firewall Sentinel", "Cyber-Rat"],
     [RoomType.ELITE]: ["Black Ice", "Corp Assassin", "Mech-Enforcer", "Netrunner Phantom"],
     [RoomType.BOSS]: ["Mainframe Core", "Project 2501", "CEO Avatar", "The Architect"],
-    [RoomType.TREASURE]: ["Encrypted Cache", "Bitcoin Wallet", "Abandon Server", "Hardware Drop"],
+    [RoomType.TREASURE]: ["Data Cache", "Crypto Node", "Hidden Archive", "Encrypted Vault"],
     [RoomType.REST]: ["Safe House", "VPN Tunnel", "Repair Node", "Offline Shelter"],
     [RoomType.EVENT]: ["Glitch Storm", "Rogue AI Contact", "Corrupted Sector", "Data Surge", "Mysterious Signal"],
     [RoomType.MERCHANT]: ["Black Market", "Rogue Dealer", "Darknet Node", "Fence"],
@@ -115,14 +117,8 @@ export default function App() {
 
       // --- Custom Logic for Variable Alert Costs ---
       if (type === RoomType.TREASURE) {
-          if (Math.random() < 0.3) {
-              name = "Deep Storage Server";
-              description = "High value data. Requires heavy brute force. Risk: Massive Alert Increase.";
-              alertPenalty = 20;
-          } else {
-              description = "Valuable resources. Risk: Increases Alert Level.";
-              alertPenalty = 5;
-          }
+          description = "Encrypted Node. Can contain Data Caches, Contracts, or Miners.";
+          alertPenalty = 5;
       } else if (type === RoomType.REST) {
           if (Math.random() < 0.3) {
               name = "System Reboot Node";
@@ -197,12 +193,76 @@ export default function App() {
 
   // --- Logic Helpers that need to be hoisted ---
 
+  const updateContracts = useCallback((eventType: 'COMBAT_WIN' | 'FLOOR_ADVANCE', data?: any) => {
+      setGameState(prev => {
+          let updatedContracts = [...prev.player.activeContracts];
+          let updatedPlayer = { ...prev.player };
+          let newHistory = [...prev.history];
+
+          // Filter out expired or completed contracts logic
+          updatedContracts = updatedContracts.filter(contract => {
+              let isCompleted = false;
+              let isFailed = false;
+
+              if (eventType === 'COMBAT_WIN') {
+                  if (contract.type === ContractType.WETWORK && data?.isElite) {
+                      contract.currentValue += 1;
+                      if (contract.currentValue >= contract.targetValue) isCompleted = true;
+                  }
+                  if (contract.type === ContractType.GHOST_RUN) {
+                      isFailed = true; // Failed if combat happens
+                      newHistory.push({ id: Math.random().toString(), floor: prev.floor, message: `Contract Failed: ${contract.name}`, type: 'danger' });
+                  }
+              }
+
+              if (eventType === 'FLOOR_ADVANCE') {
+                  contract.durationFloors -= 1;
+                  
+                  if (contract.type === ContractType.GHOST_RUN) {
+                      contract.currentValue += 1;
+                      if (contract.currentValue >= contract.targetValue) isCompleted = true;
+                  }
+                  if (contract.type === ContractType.CHAOS_BET) {
+                      if (prev.player.securityAlert >= 80) isCompleted = true;
+                  }
+              }
+
+              if (isCompleted) {
+                  newHistory.push({ id: Math.random().toString(), floor: prev.floor, message: `Contract Completed: ${contract.name}. Reward: ${contract.payoutAmount > 0 ? contract.payoutAmount + 'C' : contract.payoutReward}`, type: 'gain' });
+                  updatedPlayer.credits += contract.payoutAmount;
+                  if (contract.payoutReward && contract.payoutAmount === 0) {
+                      // Logic for item reward (Module)
+                      const mod = AVAILABLE_MODULES[Math.floor(Math.random() * AVAILABLE_MODULES.length)];
+                      updatedPlayer.modules = [...updatedPlayer.modules, mod];
+                      newHistory.push({ id: Math.random().toString(), floor: prev.floor, message: `Contract Reward: ${mod.name}`, type: 'gain' });
+                  }
+                  return false; // Remove from active
+              }
+              
+              if (contract.durationFloors <= 0 || isFailed) {
+                  if (!isFailed) newHistory.push({ id: Math.random().toString(), floor: prev.floor, message: `Contract Expired: ${contract.name}`, type: 'info' });
+                  return false; // Remove
+              }
+
+              return true; // Keep active
+          });
+
+          return {
+              ...prev,
+              player: { ...updatedPlayer, activeContracts: updatedContracts },
+              history: newHistory
+          };
+      });
+  }, []);
+
   const advanceFloor = useCallback((player: PlayerStats, resolutionText: string, bossDefeated: boolean = false, nextRoomTypes?: RoomType[]) => {
       const nextFloor = gameState.floor + 1;
       const newLastBossFloor = bossDefeated ? gameState.floor : gameState.lastBossFloor;
       
-      // REBALANCE: Passive drift reduced to +1 per floor
-      const newAlert = Math.min(100, player.securityAlert + 1);
+      // REBALANCE: Passive drift +1 per floor
+      // MINER: +4 Alert if miner active
+      const minerAlert = player.hasCryptoMiner ? 4 : 0;
+      const newAlert = Math.min(100, player.securityAlert + 1 + minerAlert);
       const playerWithDrift = { ...player, securityAlert: newAlert };
       
       // Use the scout info (nextRoomTypes) if available to force the room types
@@ -219,107 +279,269 @@ export default function App() {
         lastBossFloor: newLastBossFloor,
         pendingNextRoomTypes: undefined // Clear any pending path
     }));
-  }, [gameState.floor, gameState.lastBossFloor, generateCardsForFloor]);
+    
+    // Check Contracts on floor advance
+    setTimeout(() => updateContracts('FLOOR_ADVANCE'), 0);
 
-  // --- Event Handling Logic ---
+  }, [gameState.floor, gameState.lastBossFloor, generateCardsForFloor, updateContracts]);
 
-  const generateEvent = (): { title: string, description: string, choices: EventChoice[] } => {
-      const scenarios = [
-          {
-              title: "Rogue AI Signal",
-              description: "You intercept a fragmented signal from a rogue AI. It offers power in exchange for exposing your location.",
-              choices: [
-                  { id: 'accept_power', text: 'Merge Protocols', description: '+2 RAM, +15 Alert', riskText: 'High Alert', style: 'text-cyber-pink border-cyber-pink' },
-                  { id: 'mask_signal', text: 'Mask Signal', description: '-15 Alert, -75 Crypto', riskText: 'Cost: Crypto', style: 'text-cyber-green border-cyber-green' },
-                  { id: 'ignore', text: 'Sever Connection', description: 'No Effect', riskText: 'Safe', style: 'text-gray-400 border-gray-400' }
-              ]
-          },
-          {
-              title: "Corrupted Data Bank",
-              description: "A massive, unguarded server. It's glitching heavily. You could try to siphon funds or purge the corruption to lower your signature.",
-              choices: [
-                  { id: 'siphon', text: 'Siphon Funds', description: 'Gain High Crypto, +15 Alert', riskText: 'Greedy', style: 'text-cyber-yellow border-cyber-yellow' },
-                  { id: 'purge', text: 'Purge Corruption', description: '-20 Alert, -3 RAM (Burnout)', riskText: 'Tactical', style: 'text-cyber-neon border-cyber-neon' },
-                  { id: 'leave', text: 'Leave', description: 'No Effect', riskText: 'Safe', style: 'text-gray-400 border-gray-400' }
-              ]
-          },
-          {
-              title: "Security Checkpoint",
-              description: "You stumbled into a dormant security hub. Systems are waking up.",
-              choices: [
-                  { id: 'smash', text: 'Smash Console', description: '-15 Alert, -10 HP (Sparks)', riskText: 'Aggressive', style: 'text-cyber-red border-cyber-red' },
-                  { id: 'hack', text: 'Inject Trojan', description: '+15 Alert, +1 Module (Random)', riskText: 'High Risk', style: 'text-purple-400 border-purple-400' },
-                  { id: 'stealth', text: 'Stealth Bypass', description: 'No Effect', riskText: 'Cautious', style: 'text-gray-400 border-gray-400' }
-              ]
-          }
-      ];
-      return scenarios[Math.floor(Math.random() * scenarios.length)];
-  };
+  // --- Treasure & Event Logic ---
 
-  const handleEventChoice = useCallback((choiceId: string) => {
-      let player = { ...gameState.player };
-      let logMsg = '';
-      let resolutionText = '';
-      let alertChange = 0;
-
-      // Event Logic Switch
-      switch (choiceId) {
-          case 'accept_power':
-              player.power += 2;
-              alertChange = 15;
-              logMsg = "Merged with Rogue AI: +2 RAM, +15 Alert";
-              resolutionText = "You accepted the raw data stream. Your processing power surged, but the massive signal spike alerted every subsystem in the sector.";
-              break;
-          case 'mask_signal':
-              player.credits = Math.max(0, player.credits - 75);
-              alertChange = -15;
-              logMsg = "Signal Masked: -15 Alert, -75 Crypto";
-              resolutionText = "You spent heavy resources to scramble your digital footprint, confusing local scanners.";
-              break;
-          case 'siphon':
-              const gain = 100 * (1 + (gameState.floor * 0.1));
-              player.credits += Math.floor(gain);
-              alertChange = 15;
-              logMsg = `Siphoned Funds: +${Math.floor(gain)} Crypto, +15 Alert`;
-              resolutionText = "Greed is good. You drained the accounts, but the theft didn't go unnoticed.";
-              break;
-          case 'purge':
-              player.power = Math.max(1, player.power - 3);
-              alertChange = -20;
-              logMsg = "System Purge: -20 Alert, -3 RAM";
-              resolutionText = "You actively hunted down and deleted your own logs from the corrupted server, frying some of your circuits in the process.";
-              break;
-          case 'smash':
-              player.hp = Math.max(1, player.hp - 10);
-              alertChange = -15;
-              logMsg = "Console Destroyed: -15 Alert, -10 Integrity";
-              resolutionText = "Subtlety is overrated. You smashed the surveillance hub before it could broadcast, taking some feedback damage.";
-              break;
-          case 'hack':
-              alertChange = 15;
-              // Random module chance
-              const mod = AVAILABLE_MODULES[Math.floor(Math.random() * AVAILABLE_MODULES.length)];
-              // Ensure we create a new array to avoid mutating the initial stats or shared references
-              player.modules = [...player.modules, mod];
-              if (mod.effectId === 'overclock') { player.power+=3; player.maxHp-=10; } // Instant effect check
-              logMsg = `Trojan Installed: Acquired ${mod.name}, +15 Alert`;
-              resolutionText = `You risked detection to inject a worm. It returned with a payload: ${mod.name}.`;
-              break;
-          case 'ignore':
-          case 'leave':
-          case 'stealth':
-              logMsg = "Event Bypassed.";
-              resolutionText = "You chose not to interact with the anomaly, slipping away unseen.";
-              break;
+  const generateTreasure = (floor: number): { type: TreasureType, flavor: string, contracts?: Contract[] } => {
+      const rand = Math.random();
+      let type = TreasureType.DATA_CACHE;
+      
+      // Distribution based on floor tier (Early 1-3, Mid 4-6, Late 7+)
+      if (floor <= 3) {
+          if (rand < 0.55) type = TreasureType.DATA_CACHE;
+          else if (rand < 0.80) type = TreasureType.DARK_CONTRACT;
+          else type = TreasureType.CRYPTO_MINER;
+      } else if (floor <= 6) {
+          if (rand < 0.40) type = TreasureType.DATA_CACHE;
+          else if (rand < 0.75) type = TreasureType.DARK_CONTRACT;
+          else type = TreasureType.CRYPTO_MINER;
+      } else {
+          if (rand < 0.30) type = TreasureType.DATA_CACHE;
+          else if (rand < 0.75) type = TreasureType.DARK_CONTRACT;
+          else type = TreasureType.CRYPTO_MINER;
       }
 
-      // Apply Alert
-      player.securityAlert = Math.max(0, Math.min(100, player.securityAlert + alertChange));
+      let contracts: Contract[] = [];
+      if (type === TreasureType.DARK_CONTRACT) {
+          contracts = [
+              { id: 'c1'+Math.random(), name: 'GHOST RUN', description: 'Survive 4 floors without combat.', type: ContractType.GHOST_RUN, cost: 35, payoutAmount: 110, targetValue: 4, currentValue: 0, durationFloors: 4, startFloor: floor },
+              { id: 'c2'+Math.random(), name: 'WETWORK', description: 'Kill an Elite enemy.', type: ContractType.WETWORK, cost: 20, payoutAmount: 0, payoutReward: 'Rare Module', targetValue: 1, currentValue: 0, durationFloors: 5, startFloor: floor },
+              { id: 'c3'+Math.random(), name: 'CHAOS BET', description: 'Reach 80% Alert.', type: ContractType.CHAOS_BET, cost: 25, payoutAmount: 150, targetValue: 80, currentValue: 0, durationFloors: 5, startFloor: floor }
+          ];
+      }
 
-      addLog(logMsg, alertChange > 0 ? 'danger' : 'gain');
-      // Pass the pending next room types from state to maintain path
-      advanceFloor(player, resolutionText, false, gameState.pendingNextRoomTypes);
-  }, [gameState.player, gameState.floor, gameState.pendingNextRoomTypes, advanceFloor]);
+      const flavors = {
+          [TreasureType.DATA_CACHE]: "Encrypted server node detected. Layers of ICE present.",
+          [TreasureType.CRYPTO_MINER]: "Dormant mining protocol detected. Installation will compromise security.",
+          [TreasureType.DARK_CONTRACT]: "Darknet Futures Exchange. Place your bets, runner."
+      };
+
+      return { type, flavor: flavors[type], contracts };
+  };
+
+  const purgeMiner = () => {
+      if (!gameState.player.hasCryptoMiner) return;
+      const cost = 20;
+      if (gameState.player.hp <= cost) return;
+
+      setGameState(prev => ({
+          ...prev,
+          player: {
+              ...prev.player,
+              hp: prev.player.hp - cost,
+              hasCryptoMiner: false
+          },
+          history: [...prev.history, { id: 'purge', floor: prev.floor, message: `Miner Purged. -${cost} HP`, type: 'info' }]
+      }));
+  };
+
+  const handleTreasureInteraction = (action: string, data?: any) => {
+      let player = { ...gameState.player };
+      let resolutionText = '';
+      let logMsg = '';
+      let shouldAdvance = false;
+
+      // Data Cache Actions
+      if (action === 'CACHE_L1') {
+          // Take Layer 1
+          const gain = 30 + Math.floor(gameState.floor * 2);
+          player.credits += gain;
+          logMsg = `Cache Breached (Shell): +${gain} Crypto`;
+          resolutionText = "You extracted the surface level data and jacked out.";
+          shouldAdvance = true;
+      }
+      else if (action === 'CACHE_L2_PAY') {
+          // Pay cost for Layer 2
+          if (data.costType === 'HP') player.hp -= 15;
+          if (data.costType === 'ALERT') player.securityAlert += 12;
+          if (data.costType === 'MODULE') player.modules.pop(); // Simplistic removal
+          
+          // Reward
+          const gain = 20;
+          player.credits += gain;
+          // Random Common Mod
+          const mod = AVAILABLE_MODULES[Math.floor(Math.random() * AVAILABLE_MODULES.length)];
+          player.modules = [...player.modules, mod];
+          
+          // Proceed state to Layer 3 or Leave? Prompt implies "Deeper = more loot".
+          // We'll update the current treasure state to indicate layer 2 unlocked/cleared.
+           setGameState(prev => ({
+              ...prev,
+              player,
+              currentTreasure: { ...prev.currentTreasure!, dataCache: { layer: 3, rewardsCollected: [] } }
+          }));
+          return; // Stay in modal
+      }
+      else if (action === 'CACHE_L2_LEAVE') {
+           // Took L2 reward in previous step (simulated) or just leaving now?
+           // Actually implementation simplified: clicking L2 Pay instantly gives reward. Now player sees L3.
+           logMsg = "Cache Layer 2 Breached. Loot secured.";
+           resolutionText = "You breached the ICE and secured valuable hardware.";
+           shouldAdvance = true;
+      }
+      else if (action === 'CACHE_L3') {
+          // Gate checked in UI. Pay HP.
+          player.hp -= 10;
+          const mod = AVAILABLE_MODULES[Math.floor(Math.random() * AVAILABLE_MODULES.length)]; // Should be rare
+          player.modules = [...player.modules, mod];
+          logMsg = `Cache CORE Decrypted: ${mod.name} Acquired.`;
+          resolutionText = "You cracked the core kernel. Legendary tech acquired.";
+          shouldAdvance = true;
+      }
+
+      // Miner Actions
+      else if (action === 'INSTALL_MINER') {
+          player.hasCryptoMiner = true;
+          logMsg = "Crypto Miner Installed. Passive income active.";
+          resolutionText = "The mining protocol is running in the background. It's generating heat, but the credits are flowing.";
+          shouldAdvance = true;
+      }
+
+      // Contract Actions
+      else if (action === 'SIGN_CONTRACT') {
+          const contract = data as Contract;
+          if (player.credits >= contract.cost && player.activeContracts.length < 2) {
+              player.credits -= contract.cost;
+              player.activeContracts = [...player.activeContracts, contract];
+              setGameState(prev => ({
+                  ...prev,
+                  player,
+                  currentTreasure: { 
+                      ...prev.currentTreasure!, 
+                      contracts: prev.currentTreasure?.contracts?.filter(c => c.id !== contract.id) 
+                  }
+              }));
+              return; // Stay in modal
+          }
+      }
+      else if (action === 'LEAVE_TREASURE') {
+          resolutionText = "You disconnected from the node.";
+          shouldAdvance = true;
+          logMsg = "Treasure Node bypassed.";
+      }
+
+      if (shouldAdvance) {
+          addLog(logMsg, 'gain');
+          advanceFloor(player, resolutionText, false, gameState.pendingNextRoomTypes);
+      } else {
+          setGameState(prev => ({ ...prev, player }));
+      }
+  };
+
+    // --- Interactive Event Helpers ---
+    
+    const generateEvent = useCallback((): { title: string; description: string; choices: EventChoice[] } => {
+        const events = [
+            {
+                title: "Corrupted Data Stream",
+                description: "You encounter a fragmented data stream leaking high-value crypto keys. It's unstable.",
+                choices: [
+                    { id: 'ev_stream_siphon', text: "Siphon Data", description: "Gain Crypto. Risk Alert increase.", riskText: "MED RISK", style: "border-cyber-yellow text-cyber-yellow" },
+                    { id: 'ev_stream_patch', text: "Patch Leak", description: "Heal Integrity. Small Crypto reward.", riskText: "SAFE", style: "border-cyber-green text-cyber-green" },
+                    { id: 'ev_ignore', text: "Ignore", description: "Move on safely.", riskText: "NONE", style: "border-gray-500 text-gray-500" }
+                ]
+            },
+            {
+                title: "Rogue AI Terminal",
+                description: "A sentient subroutine offers you power in exchange for system access.",
+                choices: [
+                    { id: 'ev_ai_accept', text: "Accept Deal", description: "Gain Power (RAM). Increase Alert significantly.", riskText: "HIGH RISK", style: "border-cyber-red text-cyber-red" },
+                    { id: 'ev_ai_deny', text: "Purge AI", description: "Reduce Alert. Small damage taken.", riskText: "LOW RISK", style: "border-cyber-neon text-cyber-neon" },
+                    { id: 'ev_ignore', text: "Disconnect", description: "Leave it alone.", riskText: "NONE", style: "border-gray-500 text-gray-500" }
+                ]
+            },
+            {
+                title: "Glitch Trap",
+                description: "The room shifts around you. It's a trap!",
+                choices: [
+                    { id: 'ev_trap_break', text: "Brute Force", description: "Take Damage to escape quickly.", riskText: "PAINFUL", style: "border-cyber-red text-cyber-red" },
+                    { id: 'ev_trap_hack', text: "Hack Defenses", description: "Chance to avoid damage. Risk Alert.", riskText: "SKILL CHECK", style: "border-purple-500 text-purple-500" }
+                ]
+            }
+        ];
+        return events[Math.floor(Math.random() * events.length)];
+    }, []);
+
+    const handleEventChoice = useCallback((choiceId: string) => {
+        let player = { ...gameState.player };
+        let resolutionText = "";
+        let logMsg = "";
+        let logType: LogEntry['type'] = 'info';
+  
+        switch(choiceId) {
+            case 'ev_stream_siphon':
+                const gain = 40 + (gameState.floor * 5);
+                player.credits += gain;
+                player.securityAlert += 10;
+                resolutionText = `You siphoned ${gain} credits, but the intrusion was logged.`;
+                logMsg = `Event: Siphoned ${gain} Crypto. Alert +10.`;
+                logType = 'gain';
+                break;
+            case 'ev_stream_patch':
+                const heal = 15;
+                player.hp = Math.min(player.maxHp, player.hp + heal);
+                player.credits += 10;
+                resolutionText = "System stabilized. Integrity restored slightly.";
+                logMsg = `Event: Patched stream. +${heal} HP.`;
+                logType = 'gain';
+                break;
+            case 'ev_ai_accept':
+                player.power += 2;
+                player.securityAlert += 20;
+                resolutionText = "Processing power augmented. The network is now watching you closely.";
+                logMsg = "Event: Deal struck. +2 RAM. Alert +20.";
+                logType = 'danger';
+                break;
+            case 'ev_ai_deny':
+                player.securityAlert = Math.max(0, player.securityAlert - 15);
+                player.hp -= 10;
+                resolutionText = "AI purged. Security measures relaxed, but you took some feedback damage.";
+                logMsg = "Event: AI Purged. Alert -15. Took 10 DMG.";
+                logType = 'combat';
+                break;
+            case 'ev_trap_break':
+                const dmg = 20;
+                player.hp -= dmg;
+                resolutionText = "You smashed through the firewall trap.";
+                logMsg = `Event: Brute force escape. -${dmg} HP.`;
+                logType = 'danger';
+                break;
+            case 'ev_trap_hack':
+                if (player.power > 10 + (gameState.floor)) {
+                    player.securityAlert += 5;
+                    resolutionText = "Trap dismantled cleanly.";
+                    logMsg = "Event: Hack successful.";
+                } else {
+                    player.hp -= 15;
+                    player.securityAlert += 10;
+                    resolutionText = "Hack failed! Countermeasures deployed.";
+                    logMsg = "Event: Hack failed. -15 HP. Alert +10.";
+                    logType = 'danger';
+                }
+                break;
+            case 'ev_ignore':
+                resolutionText = "You bypassed the anomaly.";
+                logMsg = "Event: Bypassed.";
+                break;
+            default:
+                resolutionText = "Event resolved.";
+        }
+  
+        // Check death
+        if (player.hp <= 0) {
+            player.hp = 0;
+            setGameState(prev => ({ ...prev, player, status: 'GAME_OVER', lastResolutionText: "Killed by environmental hazard." }));
+            return;
+        }
+  
+        addLog(logMsg, logType);
+        advanceFloor(player, resolutionText, false, gameState.pendingNextRoomTypes);
+    }, [gameState.player, gameState.floor, gameState.pendingNextRoomTypes, advanceFloor]);
 
   // --- Core Action: Resolve Card ---
 
@@ -350,8 +572,6 @@ export default function App() {
 
     // 1. Merchant
     if (card.type === RoomType.MERCHANT) {
-        // Store the next path (from the original card) in pendingNextRoomTypes
-        // Also set active shop type
         setGameState(prev => ({ 
             ...prev, 
             status: 'SHOPPING', 
@@ -374,11 +594,34 @@ export default function App() {
         return;
     }
 
-    // 3. Standard Resolution (Combat/Treasure/Rest)
+    // 3. Treasure Interaction (NEW)
+    if (card.type === RoomType.TREASURE) {
+        const treasure = generateTreasure(gameState.floor);
+        // Special case for Deep Storage handled inside generateTreasure or here? 
+        // Existing "Deep Storage" logic was random text. We'll replace/merge.
+        // If Deep Storage text detected, force high reward cache?
+        // Let's stick to the new system fully.
+        setGameState(prev => ({
+            ...prev,
+            status: 'TREASURE_INTERACTION',
+            currentTreasure: { ...treasure, dataCache: treasure.type === TreasureType.DATA_CACHE ? { layer: 1, rewardsCollected: [] } : undefined },
+            player,
+            pendingNextRoomTypes: card.nextScoutInfo
+        }));
+        return;
+    }
+
+    // 4. Standard Resolution (Combat/Rest)
     let logMsg = '';
     let resolutionText = '';
     let logType: LogEntry['type'] = 'info';
     let bossDefeated = false;
+
+    // Miner Passive Income
+    if (player.hasCryptoMiner) {
+        player.credits += 10;
+        addLog("Miner Protocol: +10 Crypto", 'gain');
+    }
 
     // Module Checks
     const vampireCount = player.modules.filter(m => m.effectId === 'vampire').length;
@@ -397,48 +640,37 @@ export default function App() {
     const alertChange = card.alertPenalty ?? 5;
     player.securityAlert = Math.max(0, Math.min(100, player.securityAlert + alertChange));
     
-    // Alert Multipliers (REBALANCE: Reduced damage scaling, nerfed reward scaling)
-    const alertMultiplier = 1 + (player.securityAlert / 150); // Damage +66% at 100% alert
-    const rewardMultiplier = 1 + (player.securityAlert / 100); // Reward max 2x at 100% alert
+    // Alert Multipliers
+    const alertMultiplier = 1 + (player.securityAlert / 150); 
+    const rewardMultiplier = 1 + (player.securityAlert / 100); 
 
-    // Logic Switch
     if (card.type === RoomType.ENEMY || card.type === RoomType.ELITE || card.type === RoomType.BOSS) {
       // Combat Logic
       let multiplier = card.type === RoomType.BOSS ? 2.5 : (card.type === RoomType.ELITE ? 1.5 : 1);
-      // Hard mode: Enemy base stats buffed by 1.2x
       const enemyPower = Math.floor(baseEnemyPower * 1.2 * multiplier * alertMultiplier);
       const enemyHp = Math.floor(baseEnemyHp * 1.2 * multiplier);
 
-      // NERF: Thorns now gives +3 instead of +5
       let effectivePlayerPower = player.power + (3 * thornsCount);
       
-      // --- ALERT PHASE: STEALTH (0-29%) ---
-      // Benefit: First Attack x1.7 Damage
       let firstHit = effectivePlayerPower;
       if (player.securityAlert < 30) {
           firstHit = Math.floor(effectivePlayerPower * 1.7); 
       }
 
-      // Calculate Rounds
       let remainingEnemyHp = enemyHp - firstHit;
       let roundsToKill = 1;
       if (remainingEnemyHp > 0) {
           roundsToKill += Math.ceil(remainingEnemyHp / effectivePlayerPower);
       }
 
-      // Guardian Angel Flat Reduction (NERF: -2 instead of -5)
       const flatReduction = 2 * guardianCount;
       let incomingDmgPerRound = Math.max(0, enemyPower - player.shield - flatReduction);
       
       let totalDamageTaken = 0;
       
-      // Player hits first, so roundsToKill - 1 hits taken
       for(let i=0; i< roundsToKill -1; i++) {
-          // Nano Armor check (NERF: 8% instead of 10%)
           if (!(nanoCount > 0 && Math.random() < (0.08 * nanoCount))) {
-              // Logic Bomb Check (Reflect Damage) (NERF: 12% instead of 15%)
               if (logicBombCount > 0 && Math.random() < (0.12 * logicBombCount)) {
-                  // Logic Bomb mitigation for simulation
               } else {
                   totalDamageTaken += incomingDmgPerRound;
               }
@@ -449,16 +681,12 @@ export default function App() {
       
       const powerGain = card.type === RoomType.BOSS ? 5 : 1;
       player.power += powerGain;
-      // NERF: Vampire now heals 2 instead of 3
       if (vampireCount > 0) player.hp = Math.min(player.maxHp, player.hp + (2 * vampireCount));
       if (card.type === RoomType.BOSS) bossDefeated = true;
 
-      // Crypto
-      // REBALANCE: Reduced base credit gain
       const baseCredit = 6 * scalingFactor;
       const creditMultiplier = card.type === RoomType.BOSS ? 10 : (card.type === RoomType.ELITE ? 3 : 1);
       
-      // --- ALERT PHASE: ACTIVE SWEEP (30-59%) ---
       const isActiveSweep = player.securityAlert >= 30 && player.securityAlert < 60;
       const activeSweepBonus = isActiveSweep ? 1.3 : 1;
 
@@ -486,47 +714,15 @@ export default function App() {
         setGameState(prev => ({ ...prev, player, status: 'GAME_OVER', lastResolutionText: "CRITICAL SYSTEM FAILURE. SIGNAL LOST." }));
         return;
       }
+
+      // Check Combat Contracts
+      setTimeout(() => updateContracts('COMBAT_WIN', { isElite: card.type === RoomType.ELITE }), 0);
     } 
-    else if (card.type === RoomType.TREASURE) {
-        // --- ALERT PHASE: ACTIVE SWEEP (30-59%) ---
-        const isActiveSweep = player.securityAlert >= 30 && player.securityAlert < 60;
-        const activeSweepBonus = isActiveSweep ? 1.3 : 1;
-
-        if (card.alertPenalty && card.alertPenalty > 15) {
-            // High Risk Treasure
-            const baseGain = 150 * scalingFactor;
-            const creditGain = Math.floor(baseGain * rewardMultiplier * activeSweepBonus);
-            player.credits += creditGain;
-            player.modules.push(AVAILABLE_MODULES[Math.floor(Math.random()*AVAILABLE_MODULES.length)]);
-            logMsg = `Deep Storage Cracked: +${creditGain} Crypto${isActiveSweep ? ' (Active Sweep Bonus)' : ''}, +Random Module`;
-            resolutionText = "You brute-forced a deep storage server. The massive data breach triggered a network-wide alert, but the payout was legendary.";
-        } else {
-             // Standard Treasure
-             const roll = Math.random();
-             if (roll < 0.35) {
-                 player.power += 3;
-                 logMsg = "Acquired Optimization Patch: +3 RAM";
-                 resolutionText = "You decrypted the secured cache. Inside was a kernel optimization patch.";
-             } else if (roll < 0.70) {
-                 player.shield += 2;
-                 logMsg = "Acquired Security Protocol: +2 Firewall";
-                 resolutionText = "You found an abandoned security suite. Installing it reinforced your firewall.";
-             } else {
-                 const baseGain = 75 * scalingFactor;
-                 const creditGain = Math.floor(baseGain * rewardMultiplier * activeSweepBonus);
-                 player.credits += creditGain;
-                 logMsg = `Decrypted Wallet: +${creditGain} Crypto${isActiveSweep ? ' (Active Sweep Bonus)' : ''}`;
-                 resolutionText = `You found an encrypted wallet. Brute-forcing it revealed a stash of crypto.`;
-             }
-        }
-        logType = 'gain';
-    }
     else if (card.type === RoomType.REST) {
-        // --- ALERT PHASE: LOCKDOWN (60-89%) ---
+        // ... (Existing Rest Logic)
         const isLockdown = player.securityAlert >= 60 && player.securityAlert < 90;
-        const lockdownMod = isLockdown ? 0.8 : 1; // 20% penalty (0.8x multiplier)
+        const lockdownMod = isLockdown ? 0.8 : 1; 
 
-        // Check for Deep Reboot
         if (card.alertPenalty && card.alertPenalty > 10) {
              player.hp = player.maxHp;
              logMsg = `Deep System Reboot: Fully Restored. Alert +${card.alertPenalty}`;
@@ -548,10 +744,9 @@ export default function App() {
     if (alertChange < 0) addLog(`Alert Decreased by ${Math.abs(alertChange)}%`, 'gain');
     addLog(logMsg, logType);
     
-    // Pass the actual scout info from the card to determine the next path
     advanceFloor(player, resolutionText, bossDefeated, card.nextScoutInfo);
 
-  }, [gameState, advanceFloor]);
+  }, [gameState, advanceFloor, updateContracts, generateEvent, generateTreasure]);
 
   const closeResolution = useCallback(() => {
     setGameState(prev => ({ ...prev, status: 'PLAYING' }));
@@ -566,7 +761,6 @@ export default function App() {
   const calculateModuleCost = (module: Module, currentCount: number) => {
       const isLockdown = gameState.player.securityAlert >= 60 && gameState.player.securityAlert < 90;
       const lockdownMultiplier = isLockdown ? 1.25 : 1;
-      // Price increases by 12% per stack (compounding)
       const stackMultiplier = Math.pow(1.12, currentCount);
       return Math.ceil(module.cost * stackMultiplier * lockdownMultiplier);
   };
@@ -630,7 +824,6 @@ export default function App() {
         return;
       }
       
-      // Shop Shortcut
       if (gameState.status === 'SHOPPING') {
           if (e.code === 'Space' || e.key === ' ') {
               e.preventDefault();
@@ -639,7 +832,6 @@ export default function App() {
           return;
       }
       
-      // Event Interaction Shortcuts: A, S, D
       if (gameState.status === 'EVENT_INTERACTION' && gameState.currentEvent) {
           const key = e.key.toLowerCase();
           if (key === 'a' && gameState.currentEvent.choices[0]) handleEventChoice(gameState.currentEvent.choices[0].id);
@@ -663,13 +855,11 @@ export default function App() {
 
   // --- RENDER HELPERS ---
   const isLockdown = gameState.player.securityAlert >= 60 && gameState.player.securityAlert < 90;
-  const priceMultiplier = isLockdown ? 1.25 : 1; // 25% price increase
-  const repairCost = Math.ceil(41 * priceMultiplier); // Base cost 41
+  const priceMultiplier = isLockdown ? 1.25 : 1;
+  const repairCost = Math.ceil(41 * priceMultiplier);
 
-  // Shop Inventory Logic
   const getShopInventory = () => {
       if (!gameState.activeShopType) return AVAILABLE_MODULES;
-      
       return AVAILABLE_MODULES.filter(m => {
           if (gameState.activeShopType === 'HARDWARE') {
               return ['nano_armor', 'overclock', 'guardian'].includes(m.effectId);
@@ -677,7 +867,7 @@ export default function App() {
           if (gameState.activeShopType === 'SOFTWARE') {
               return ['vampire', 'thorns', 'miner', 'logic_bomb'].includes(m.effectId);
           }
-          return true; // General/Black Market has everything
+          return true;
       });
   };
 
@@ -693,7 +883,7 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20" 
            style={{ backgroundImage: 'linear-gradient(rgba(0, 243, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 243, 255, 0.05) 1px, transparent 1px)', backgroundSize: '40px 40px' }} 
       />
-      <StatsHeader floor={gameState.floor} player={gameState.player} />
+      <StatsHeader floor={gameState.floor} player={gameState.player} onPurgeMiner={purgeMiner} />
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 z-10 relative">
         <div className="w-full max-w-6xl flex justify-between items-center mb-4">
@@ -804,6 +994,114 @@ export default function App() {
                        ))}
                    </div>
                </div>
+          </div>
+      )}
+
+      {/* TREASURE INTERACTION MODAL - NEW */}
+      {gameState.status === 'TREASURE_INTERACTION' && gameState.currentTreasure && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+              <div className="bg-cyber-panel border border-yellow-500 w-full max-w-3xl p-8 rounded-xl shadow-[0_0_50px_rgba(234,179,8,0.2)]">
+                  <div className="flex items-center gap-3 mb-6 text-yellow-500 border-b border-yellow-500/30 pb-4">
+                      {gameState.currentTreasure.type === TreasureType.DATA_CACHE ? <DatabaseIcon className="w-8 h-8" /> :
+                       gameState.currentTreasure.type === TreasureType.CRYPTO_MINER ? <Pickaxe className="w-8 h-8" /> :
+                       <ClipboardList className="w-8 h-8" />}
+                      <h2 className="text-3xl font-mono font-bold tracking-widest uppercase">
+                          {gameState.currentTreasure.type.replace('_', ' ')}
+                      </h2>
+                  </div>
+                  <p className="text-gray-300 font-mono mb-8 leading-relaxed text-lg italic">
+                      "{gameState.currentTreasure.flavor}"
+                  </p>
+
+                  {/* DATA CACHE UI */}
+                  {gameState.currentTreasure.type === TreasureType.DATA_CACHE && gameState.currentTreasure.dataCache && (
+                      <div className="space-y-4">
+                          {gameState.currentTreasure.dataCache.layer === 1 && (
+                              <div className="space-y-4 animate-in fade-in">
+                                  <div className="p-4 border border-green-500/50 bg-green-900/10 rounded">
+                                      <h4 className="text-green-500 font-bold mb-1">LAYER 1 (SHELL) DECRYPTED</h4>
+                                      <p className="text-sm text-gray-400">Contains: 25-35 Crypto</p>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <button onClick={() => handleTreasureInteraction('CACHE_L1')} className="p-4 border border-green-500 text-green-500 hover:bg-green-500/10 font-bold">EXTRACT & LEAVE</button>
+                                      <button onClick={() => handleTreasureInteraction('CACHE_L2_PAY', {costType: 'HP'})} className="p-4 border border-red-500 text-red-500 hover:bg-red-500/10 font-bold flex flex-col items-center justify-center">
+                                          <span>BREACH LAYER 2</span>
+                                          <span className="text-xs mt-1">COST: -15 HP</span>
+                                      </button>
+                                  </div>
+                              </div>
+                          )}
+                          {gameState.currentTreasure.dataCache.layer === 3 && (
+                               <div className="space-y-4 animate-in fade-in">
+                                  <div className="p-4 border border-purple-500/50 bg-purple-900/10 rounded">
+                                      <h4 className="text-purple-500 font-bold mb-1">LAYER 2 (ICE) BREACHED</h4>
+                                      <p className="text-sm text-gray-400">Reward: Common Module + 20 Crypto</p>
+                                  </div>
+                                  <p className="text-center text-gray-400 text-sm">Do you access the CORE?</p>
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <button onClick={() => handleTreasureInteraction('CACHE_L2_LEAVE')} className="p-4 border border-gray-500 text-gray-400 hover:bg-gray-800 font-bold">TAKE LOOT & LEAVE</button>
+                                      {gameState.player.power >= 15 ? (
+                                        <button onClick={() => handleTreasureInteraction('CACHE_L3')} className="p-4 border border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 font-bold flex flex-col items-center justify-center animate-pulse">
+                                            <span>DECRYPT CORE</span>
+                                            <span className="text-xs mt-1">REQ: 15 RAM | COST: -10 HP</span>
+                                        </button>
+                                      ) : (
+                                        <button disabled className="p-4 border border-gray-800 text-gray-600 font-bold flex flex-col items-center justify-center cursor-not-allowed">
+                                            <span>CORE LOCKED</span>
+                                            <span className="text-xs mt-1">REQ: 15 RAM (Insufficient)</span>
+                                        </button>
+                                      )}
+                                  </div>
+                               </div>
+                          )}
+                      </div>
+                  )}
+
+                  {/* DARK CONTRACT UI */}
+                  {gameState.currentTreasure.type === TreasureType.DARK_CONTRACT && (
+                      <div className="grid grid-cols-1 gap-4">
+                          <p className="text-sm text-gray-400 mb-2">Select a contract to sign (Max 2 Active). Cost is paid upfront.</p>
+                          {gameState.currentTreasure.contracts?.map(contract => (
+                              <div key={contract.id} className="border border-purple-500/50 bg-black/40 p-4 rounded flex justify-between items-center hover:bg-purple-900/10 transition-colors">
+                                  <div>
+                                      <h4 className="text-purple-400 font-bold">{contract.name}</h4>
+                                      <p className="text-xs text-gray-400">{contract.description}</p>
+                                      <div className="text-xs text-gray-500 mt-1 flex gap-3">
+                                          <span>Cost: {contract.cost}C</span>
+                                          <span>Reward: {contract.payoutAmount > 0 ? contract.payoutAmount + 'C' : contract.payoutReward}</span>
+                                          <span>Exp: {contract.durationFloors} Flrs</span>
+                                      </div>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleTreasureInteraction('SIGN_CONTRACT', contract)}
+                                    disabled={gameState.player.credits < contract.cost || gameState.player.activeContracts.length >= 2}
+                                    className="px-4 py-2 border border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-black font-bold text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                      SIGN
+                                  </button>
+                              </div>
+                          ))}
+                          <button onClick={() => handleTreasureInteraction('LEAVE_TREASURE')} className="mt-4 w-full py-3 border border-gray-600 text-gray-400 hover:text-white font-bold">LEAVE EXCHANGE</button>
+                      </div>
+                  )}
+
+                  {/* CRYPTO MINER UI */}
+                  {gameState.currentTreasure.type === TreasureType.CRYPTO_MINER && (
+                      <div className="text-center space-y-6">
+                          <div className="p-6 border border-emerald-500/30 bg-emerald-900/10 rounded flex flex-col items-center gap-2">
+                              <Pickaxe className="w-12 h-12 text-emerald-500" />
+                              <h3 className="text-xl text-emerald-400 font-bold">MINING PROTOCOL v9.0</h3>
+                              <p className="text-sm text-gray-300">Generates <span className="text-emerald-400">+10 Crypto</span> per room.</p>
+                              <p className="text-sm text-red-400">WARNING: Increases Security Alert by <span className="font-bold">+4</span> per floor.</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                              <button onClick={() => handleTreasureInteraction('LEAVE_TREASURE')} className="p-4 border border-gray-500 text-gray-400 hover:bg-gray-800 font-bold">IGNORE</button>
+                              <button onClick={() => handleTreasureInteraction('INSTALL_MINER')} className="p-4 border border-emerald-500 text-emerald-500 hover:bg-emerald-500/10 font-bold">INSTALL PROTOCOL</button>
+                          </div>
+                      </div>
+                  )}
+
+              </div>
           </div>
       )}
 
@@ -976,20 +1274,20 @@ export default function App() {
                                     <h3 className="text-cyber-green font-bold text-lg flex items-center gap-2 mt-6">TREASURE PROTOCOLS</h3>
                                     <div className="bg-black/50 p-4 rounded border border-gray-800 space-y-2">
                                         <div className="flex justify-between border-b border-gray-700 pb-1">
-                                            <span>RAM Patch (+3)</span>
-                                            <span className="text-cyber-pink">35%</span>
+                                            <span>Data Cache</span>
+                                            <span className="text-cyber-pink">Push-Your-Luck</span>
                                         </div>
                                         <div className="flex justify-between border-b border-gray-700 pb-1">
-                                            <span>Firewall Suite (+2)</span>
-                                            <span className="text-cyber-yellow">35%</span>
+                                            <span>Dark Contract</span>
+                                            <span className="text-cyber-yellow">Betting System</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span>Crypto Cache</span>
-                                            <span className="text-cyber-green">30%</span>
+                                            <span>Crypto Miner</span>
+                                            <span className="text-cyber-green">Passive Income/Risk</span>
                                         </div>
                                     </div>
                                     <p className="text-xs text-gray-500">
-                                        <span className="text-white font-bold">Deep Storage:</span> Guaranteed High Crypto + Random Module. (High Alert Cost)
+                                        <span className="text-white font-bold">Deep Storage:</span> High Risk/Reward node mechanics.
                                     </p>
                                 </div>
                           </div>

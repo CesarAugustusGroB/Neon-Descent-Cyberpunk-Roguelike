@@ -1,14 +1,15 @@
 
 import React from 'react';
 import { PlayerStats, Module } from '../types';
-import { Shield, Zap, Heart, Layers, Bitcoin, AlertTriangle, Cpu, Droplet, Activity, Database, Box, Cross, Eye, MemoryStick } from 'lucide-react';
+import { Shield, Zap, Heart, Layers, Bitcoin, AlertTriangle, Cpu, Droplet, Activity, Database, Box, Cross, Eye, MemoryStick, ClipboardList, Pickaxe, Trash2 } from 'lucide-react';
 
 interface StatsHeaderProps {
   floor: number;
   player: PlayerStats;
+  onPurgeMiner: () => void;
 }
 
-export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
+export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player, onPurgeMiner }) => {
   // Calculate HP percentage for bar
   const hpPercent = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
   
@@ -95,7 +96,7 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
         {/* Stats Grid */}
         <div className="flex-1 flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
             
-            {/* Security Alert Level - NEW DESIGN */}
+            {/* Security Alert Level */}
             <div className="flex items-center space-x-3 bg-black/40 px-3 py-1 rounded border border-gray-800 hover:border-gray-600 transition-colors" title={`Phase: ${alertState.phase} - ${alertState.effect}`}>
                 <AlertTriangle className={`w-5 h-5 ${alertState.color}`} />
                 <div className="flex flex-col w-32">
@@ -114,6 +115,46 @@ export const StatsHeader: React.FC<StatsHeaderProps> = ({ floor, player }) => {
                     <span className="text-[8px] text-gray-500 font-mono mt-0.5 uppercase">{alertState.effect}</span>
                 </div>
             </div>
+
+            {/* Crypto Miner Status */}
+            {player.hasCryptoMiner && (
+                <div className="group relative flex items-center justify-center p-1.5 bg-emerald-900/20 border border-emerald-500/50 rounded cursor-help">
+                    <Pickaxe className="w-4 h-4 text-emerald-400 animate-pulse" />
+                    <div className="absolute top-full right-0 mt-3 w-48 bg-cyber-black/95 border border-emerald-500 p-3 shadow-xl backdrop-blur-xl rounded z-[60] hidden group-hover:block">
+                        <p className="font-mono font-bold text-xs text-emerald-400 mb-1">CRYPTO MINER ACTIVE</p>
+                        <p className="text-[10px] text-gray-400 mb-2">+10 Crypto/Room, +4 Alert/Floor</p>
+                        <button 
+                            onClick={onPurgeMiner}
+                            className="w-full flex items-center justify-center gap-2 px-2 py-1 bg-red-900/30 border border-red-500 text-red-500 text-[10px] font-bold hover:bg-red-500 hover:text-white transition-colors"
+                        >
+                            <Trash2 className="w-3 h-3" />
+                            PURGE (-20 HP)
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Active Contracts */}
+            {player.activeContracts.length > 0 && (
+                <div className="flex items-center space-x-2 border-r border-gray-700 pr-4 mr-2">
+                    {player.activeContracts.map(contract => (
+                        <div key={contract.id} className="group relative cursor-help">
+                            <ClipboardList className="w-4 h-4 text-purple-400" />
+                            <div className="absolute top-full right-0 mt-3 w-56 bg-cyber-black/95 border border-purple-500 p-3 shadow-xl backdrop-blur-xl rounded z-[60] hidden group-hover:block">
+                                <p className="font-mono font-bold text-xs text-purple-400 mb-1">{contract.name}</p>
+                                <p className="text-[10px] text-gray-300 mb-2">{contract.description}</p>
+                                <div className="text-[10px] text-gray-400 flex justify-between">
+                                    <span>Progress: {contract.currentValue}/{contract.targetValue}</span>
+                                    <span>Expires: {contract.durationFloors} floors</span>
+                                </div>
+                                <div className="w-full h-1 bg-gray-800 mt-1 rounded-full overflow-hidden">
+                                    <div className="h-full bg-purple-500" style={{ width: `${(contract.currentValue / contract.targetValue) * 100}%` }}></div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Modules (Mini) - Grouped with Stacks */}
             {uniqueModules.length > 0 && (
